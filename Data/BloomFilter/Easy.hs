@@ -45,7 +45,7 @@ easyList :: (Hashable a)
 {-# SPECIALIZE easyList :: Double -> [String] -> Bloom String #-}
 {-# SPECIALIZE easyList :: Double -> [LB.ByteString] -> Bloom LB.ByteString #-}
 {-# SPECIALIZE easyList :: Double -> [SB.ByteString] -> Bloom SB.ByteString #-}
-easyList errRate xs = B.fromList (cheapHashes numHashes) numBits xs
+easyList errRate xs = B.fromList (cheapHashes numHashes) numHashes numBits xs
     where capacity = length xs
           (numBits, numHashes)
               | capacity > 0 = suggestSizing capacity errRate

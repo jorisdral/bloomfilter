@@ -79,9 +79,10 @@ import Prelude hiding (elem, length, notElem,
 -- rounded up to the nearest higher power of two, but will be clamped
 -- at a maximum of 4 gigabits, since hashes are 32 bits in size.
 new :: (a -> [Hash])          -- ^ family of hash functions to use
+    -> Int
     -> Int                    -- ^ number of bits in filter
     -> ST s (MBloom s a)
-new hash numBits = MB hash shft msk `liftM` newArray numElems numBytes
+new hash numHashes numBits = MB hash numHashes shft msk `liftM` newArray numElems numBytes
   where twoBits | numBits < 1 = 1
                 | numBits > maxHash = maxHash
                 | isPowerOfTwo numBits = numBits

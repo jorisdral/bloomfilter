@@ -28,6 +28,7 @@ type Hash = Word32
 -- | A mutable Bloom filter, for use within the 'ST' monad.
 data MBloom s a = MB {
       hashes :: !(a -> [Hash])
+    , hashesInt ::  {-# UNPACK #-} !Int
     , shift :: {-# UNPACK #-} !Int
     , mask :: {-# UNPACK #-} !Int
     , bitArray :: {-# UNPACK #-} !(STUArray s Int Hash)

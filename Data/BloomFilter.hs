@@ -92,6 +92,7 @@ import Prelude hiding (elem, length, notElem,
 -- | An immutable Bloom filter, suitable for querying from pure code.
 data Bloom a = B {
       hashes :: !(a -> [Hash])
+    , hashesInt ::  {-# UNPACK #-} !Int
     , shift :: {-# UNPACK #-} !Int
     , mask :: {-# UNPACK #-} !Int
     , bitArray :: {-# UNPACK #-} !(UArray Int Hash)
@@ -121,53 +122,56 @@ logBitsInHash = 5 -- logPower2 bitsInHash
 --
 -- Note that the result of the setup function is not used.
 create :: (a -> [Hash])        -- ^ family of hash functions to use
+        -> Int
         -> Int                  -- ^ number of bits in filter
         -> (forall s. (MBloom s a -> ST s ()))  -- ^ setup function
         -> Bloom a
 {-# INLINE create #-}
-create hash numBits body = runST $ do
-  mb <- MB.new hash numBits
+create hash numHashes numBits body = runST $ do
+  mb <- MB.new hash numHashes numBits
   body mb
   unsafeFreeze mb
 
 -- | Create an immutable Bloom filter from a mutable one.  The mutable
 -- filter may be modified afterwards.
 freeze :: MBloom s a -> ST s (Bloom a)
-freeze mb = B (MB.hashes mb) (MB.shift mb) (MB.mask mb) `liftM`
+freeze mb = B (MB.hashes mb) (MB.hashesInt mb) (MB.shift mb) (MB.mask mb) `liftM`
             ST.freeze (MB.bitArray mb)
 
 -- | Create an immutable Bloom filter from a mutable one.  The mutable
 -- filter /must not/ be modified afterwards, or a runtime crash may
 -- occur.  For a safer creation interface, use 'freeze' or 'create'.
 unsafeFreeze :: MBloom s a -> ST s (Bloom a)
-unsafeFreeze mb = B (MB.hashes mb) (MB.shift mb) (MB.mask mb) `liftM`
+unsafeFreeze mb = B (MB.hashes mb) (MB.hashesInt mb) (MB.shift mb) (MB.mask mb) `liftM`
                     ST.unsafeFreeze (MB.bitArray mb)
 
 -- | Copy an immutable Bloom filter to create a mutable one.  There is
 -- no non-copying equivalent.
 thaw :: Bloom a -> ST s (MBloom s a)
-thaw ub = MB.MB (hashes ub) (shift ub) (mask ub) `liftM` ST.thaw (bitArray ub)
+thaw ub = MB.MB (hashes ub) (hashesInt ub) (shift ub) (mask ub) `liftM` ST.thaw (bitArray ub)
 
 -- | Create an empty Bloom filter.
 --
 -- This function is subject to fusion with 'insert'
 -- and 'insertList'.
 empty :: (a -> [Hash])         -- ^ family of hash functions to use
+       -> Int
        -> Int                   -- ^ number of bits in filter
        -> Bloom a
 {-# INLINE [1] empty #-}
-empty hash numBits = create hash numBits (\_ -> return ())
+empty hash numHashes numBits = create hash numHashes numBits (\_ -> return ())
 
 -- | Create a Bloom filter with a single element.
 --
 -- This function is subject to fusion with 'insert'
 -- and 'insertList'.
 singleton :: (a -> [Hash])     -- ^ family of hash functions to use
+           -> Int
            -> Int               -- ^ number of bits in filter
            -> a                 -- ^ element to insert
            -> Bloom a
 {-# INLINE [1] singleton #-}
-singleton hash numBits elt = create hash numBits (\mb -> MB.insert mb elt)
+singleton hash numHashes numBits elt = create hash numHashes numBits (\mb -> MB.insert mb elt)
 
 -- | Given a filter's mask and a hash value, compute an offset into
 -- a word array and a bit offset within that word.
@@ -242,12 +246,12 @@ insertList elts = modify $ \mb -> mapM_ (MB.insert mb) elts
     insertList xs (insertList ys u) = insertList (xs++ys) u
   #-}
 
-{-# RULES "Bloom insertList . empty" forall h n xs.
-    insertList xs (empty h n) = fromList h n xs
+{-# RULES "Bloom insertList . empty" forall h i n xs.
+    insertList xs (empty h i n) = fromList h i n xs
   #-}
 
-{-# RULES "Bloom insertList . singleton" forall h n x xs.
-    insertList xs (singleton h n x) = fromList h n (x:xs)
+{-# RULES "Bloom insertList . singleton" forall h i n x xs.
+    insertList xs (singleton h i n x) = fromList h i n (x:xs)
   #-}
 
 -- | Query an immutable Bloom filter for non-membership.  If the value
@@ -270,12 +274,13 @@ length = shiftL 1 . shift
 --   * If it returns @'Just' (a,b)@, @a@ is added to the filter and
 --     @b@ is used as a new seed.
 unfold :: forall a b. (a -> [Hash]) -- ^ family of hash functions to use
+        -> Int
         -> Int                       -- ^ number of bits in filter
         -> (b -> Maybe (a, b))       -- ^ seeding function
         -> b                         -- ^ initial seed
         -> Bloom a
 {-# INLINE unfold #-}
-unfold hashes numBits f k = create hashes numBits (loop k)
+unfold hashes numHashes numBits f k = create hashes numHashes numBits (loop k)
   where loop :: forall s. b -> MBloom s a -> ST s ()
         loop j mb = case f j of
                       Just (a, j') -> MB.insert mb a >> loop j' mb
@@ -294,14 +299,15 @@ unfold hashes numBits f k = create hashes numBits (loop k)
 --filt = fromList (cheapHashes 3) 1024 [\"foo\", \"bar\", \"quux\"]
 -- @
 fromList :: (a -> [Hash])      -- ^ family of hash functions to use
+          -> Int
           -> Int                -- ^ number of bits in filter
           -> [a]                -- ^ values to populate with
           -> Bloom a
 {-# INLINE [1] fromList #-}
-fromList hashes numBits list = create hashes numBits $ forM_ list . MB.insert
+fromList hashes numHashes numBits list = create hashes numHashes numBits $ forM_ list . MB.insert
 
-{-# RULES "Bloom insertList . fromList" forall h n xs ys.
-    insertList xs (fromList h n ys) = fromList h n (xs ++ ys)
+{-# RULES "Bloom insertList . fromList" forall h i n xs ys.
+    insertList xs (fromList h i n ys) = fromList h i n (xs ++ ys)
   #-}
 
 {-
