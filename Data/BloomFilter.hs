@@ -37,7 +37,7 @@ module Data.BloomFilter
 
     -- * Types
       Hash
-    , Bloom
+    , Bloom (..)
     , MBloom
 
     -- * Immutable Bloom filters
@@ -192,7 +192,7 @@ hashesU ub elt = hashIdx (mask ub) `map` hashes ub elt
 elem :: a -> Bloom a -> Bool
 elem elt ub = all test (hashesU ub elt)
   where test (off :* bit) = (bitArray ub `unsafeAt` off) .&. (1 `shiftL` bit) /= 0
-          
+
 modify :: (forall s. (MBloom s a -> ST s z))  -- ^ mutation function (result is discarded)
         -> Bloom a
         -> Bloom a
